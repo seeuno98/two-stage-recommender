@@ -1,0 +1,6 @@
+ranker:
+  model_type: lightgbm
+  objective: lambdarank
+  num_leaves: 31
+  learning_rate: 0.05
+  n_estimators: 200

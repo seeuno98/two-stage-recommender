@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "two-stage-recommender"
+version = "0.1.0"
+description = "Production-style two-stage recommender system scaffold."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "numpy",
+    "scipy",
+    "scikit-learn",
+    "lightgbm",
+    "implicit",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pyyaml",
+    "pytest",
+    "tqdm",
+    "python-dotenv",
+]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"

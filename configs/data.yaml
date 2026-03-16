@@ -1,0 +1,6 @@
+data:
+  interactions_path: data/raw/interactions.csv
+  user_id_col: user_id
+  item_id_col: item_id
+  timestamp_col: timestamp
+  target_col: event_strength

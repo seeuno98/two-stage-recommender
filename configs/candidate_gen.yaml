@@ -1,0 +1,4 @@
+candidate_generation:
+  model_type: popularity
+  top_k: 100
+  min_item_interactions: 1
