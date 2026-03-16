@@ -56,3 +56,20 @@ Key directories:
 3. Copy `.env.example` to `.env` if needed.
 4. Run tests with `make test`.
 5. Start the API with `make run-api`.
+
+## Kaggle API Setup
+
+Kaggle credentials must **not** be stored in this repository. Do not commit `kaggle.json` or any real API keys.
+
+Generate your API token from:
+https://www.kaggle.com/settings/account
+
+Then install it in your local Kaggle configuration directory:
+
+```bash
+mkdir -p ~/.kaggle
+mv kaggle.json ~/.kaggle/kaggle.json
+chmod 600 ~/.kaggle/kaggle.json
+```
+
+Use [configs/kaggle.example.json](configs/kaggle.example.json) only as a format reference. Keep real credentials outside version control.

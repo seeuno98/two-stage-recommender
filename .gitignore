@@ -3,6 +3,8 @@ __pycache__/
 .env
 .venv/
 *.pyc
+kaggle.json
+.kaggle/
 
 data/raw/
 data/interim/
