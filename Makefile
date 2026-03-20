@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install format lint test run-api
+.PHONY: install format lint test run-api download-data prepare-data
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -17,3 +17,9 @@ test:
 
 run-api:
 	$(PYTHON) -m uvicorn src.serving.app:app --reload
+
+download-data:
+	$(PYTHON) scripts/download_data.py
+
+prepare-data:
+	$(PYTHON) scripts/prepare_data.py

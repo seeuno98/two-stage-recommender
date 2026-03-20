@@ -11,3 +11,7 @@ pyyaml
 pytest
 tqdm
 python-dotenv
+pyarrow
+jupyter
+matplotlib
+kaggle

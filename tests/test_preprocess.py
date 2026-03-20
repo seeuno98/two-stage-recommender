@@ -1,20 +1,53 @@
-"""Tests for data preprocessing."""
+"""Tests for RetailRocket preprocessing."""
+
+from __future__ import annotations
 
 import pandas as pd
 
-from src.data.preprocess import preprocess_interactions
+from src.data.preprocess import preprocess_retailrocket_events
 
 
-def test_preprocess_interactions_sorts_and_parses_timestamps() -> None:
-    interactions = pd.DataFrame(
+def test_event_weight_mapping() -> None:
+    events = pd.DataFrame(
         {
-            "user_id": [1, 2],
-            "item_id": [100, 200],
-            "timestamp": ["2024-01-02", "2024-01-01"],
+            "timestamp": [1, 2, 3],
+            "visitorid": [1, 1, 1],
+            "event": ["view", "addtocart", "transaction"],
+            "itemid": [10, 10, 10],
         }
     )
 
-    result = preprocess_interactions(interactions)
+    result = preprocess_retailrocket_events(events)
 
-    assert list(result["user_id"]) == [2, 1]
-    assert str(result["timestamp"].dtype).startswith("datetime64")
+    assert result["event_weight"].tolist() == [1.0, 3.0, 5.0]
+
+
+def test_null_row_dropping() -> None:
+    events = pd.DataFrame(
+        {
+            "timestamp": [1, 2],
+            "visitorid": [1, None],
+            "event": ["view", "view"],
+            "itemid": [10, 11],
+        }
+    )
+
+    result = preprocess_retailrocket_events(events)
+
+    assert len(result) == 1
+    assert result.iloc[0]["user_id"] == 1
+
+
+def test_duplicate_removal() -> None:
+    events = pd.DataFrame(
+        {
+            "timestamp": [1, 1],
+            "visitorid": [1, 1],
+            "event": ["view", "view"],
+            "itemid": [10, 10],
+        }
+    )
+
+    result = preprocess_retailrocket_events(events)
+
+    assert len(result) == 1

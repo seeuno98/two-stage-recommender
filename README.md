@@ -73,3 +73,38 @@ chmod 600 ~/.kaggle/kaggle.json
 ```
 
 Use [configs/kaggle.example.json](configs/kaggle.example.json) only as a format reference. Keep real credentials outside version control.
+
+## Data Preparation
+
+The current data pipeline targets the Kaggle dataset `retailrocket/ecommerce-dataset`.
+
+Kaggle credentials must be configured locally before downloading data. Place your token at `~/.kaggle/kaggle.json` and set secure permissions:
+
+```bash
+mkdir -p ~/.kaggle
+mv kaggle.json ~/.kaggle/kaggle.json
+chmod 600 ~/.kaggle/kaggle.json
+```
+
+Run the raw download and preprocessing pipeline with:
+
+```bash
+python scripts/download_data.py
+python scripts/prepare_data.py
+```
+
+Processed artifacts are written under `data/processed/`:
+
+- `interactions.parquet`
+- `train.parquet`
+- `val.parquet`
+- `test.parquet`
+- `item_features.parquet`
+
+Interaction preprocessing standardizes the RetailRocket schema to `user_id`, `item_id`, `event_type`, `timestamp`, and `event_weight`. Event weights follow an implicit-feedback heuristic: `view -> 1.0`, `addtocart -> 3.0`, and `transaction -> 5.0`. Chronological train, validation, and test splits are created by sorting interactions by time and splitting by row order.
+
+Troubleshooting:
+
+- If `kaggle` is missing, install it with `pip install kaggle` and confirm the CLI is on your `PATH`.
+- If `kaggle.json` is missing, create a token from your Kaggle account settings and place it under `~/.kaggle/kaggle.json`.
+- If parquet writes fail, install a parquet engine such as `pyarrow`.
