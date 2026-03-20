@@ -93,6 +93,12 @@ python scripts/download_data.py
 python scripts/prepare_data.py
 ```
 
+or 
+```bash
+make download-data
+make prepare-data
+```
+
 Processed artifacts are written under `data/processed/`:
 
 - `interactions.parquet`

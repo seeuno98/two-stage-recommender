@@ -19,7 +19,7 @@ run-api:
 	$(PYTHON) -m uvicorn src.serving.app:app --reload
 
 download-data:
-	$(PYTHON) scripts/download_data.py
+	$(PYTHON) -m scripts.download_data
 
 prepare-data:
-	$(PYTHON) scripts/prepare_data.py
+	$(PYTHON) -m scripts.prepare_data
