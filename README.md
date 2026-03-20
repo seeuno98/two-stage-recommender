@@ -114,3 +114,17 @@ Troubleshooting:
 - If `kaggle` is missing, install it with `pip install kaggle` and confirm the CLI is on your `PATH`.
 - If `kaggle.json` is missing, create a token from your Kaggle account settings and place it under `~/.kaggle/kaggle.json`.
 - If parquet writes fail, install a parquet engine such as `pyarrow`.
+
+## Baseline Recommendation
+
+The first working recommender in this project is a popularity baseline. Item scores are computed from `train.parquet` using summed `event_weight`, and users are only recommended items they have not already seen in the training data.
+
+Validation is performed on `val.parquet`, where each user's interacted items are treated as relevant items. Offline evaluation reports `Recall@10`, `Recall@20`, `Recall@50`, `NDCG@10`, `NDCG@20`, and `NDCG@50`.
+
+Run the baseline with:
+
+```bash
+python -m scripts.run_popularity_baseline
+```
+
+This baseline matters because it provides a simple benchmark before moving to ALS candidate generation and more advanced retrieval models.

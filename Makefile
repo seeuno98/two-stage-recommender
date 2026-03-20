@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install format lint test run-api download-data prepare-data
+.PHONY: install format lint test run-api download-data prepare-data run-popularity
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -23,3 +23,6 @@ download-data:
 
 prepare-data:
 	$(PYTHON) -m scripts.prepare_data
+
+run-popularity:
+	$(PYTHON) -m scripts.run_popularity_baseline
