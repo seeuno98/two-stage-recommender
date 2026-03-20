@@ -128,3 +128,20 @@ python -m scripts.run_popularity_baseline
 ```
 
 This baseline matters because it provides a simple benchmark before moving to ALS candidate generation and more advanced retrieval models.
+
+## Personalized Candidate Generation Baseline
+
+This step introduces the first personalized recommender in the project. Recommendations are based on item-item co-occurrence across user histories in `train.parquet`, so each user's candidates depend on the items they previously interacted with.
+
+Seen items are filtered from the recommendation list, and validation is performed on `val.parquet` using `Recall@10`, `Recall@20`, `Recall@50`, `NDCG@10`, `NDCG@20`, and `NDCG@50`.
+
+Run the personalized baseline with:
+
+```bash
+python -m scripts.run_itemknn_baseline
+```
+
+This matters because it provides a stronger personalized benchmark before moving to ALS candidate generation.
+
+## Result Summar
+* A naive item-item co-occurrence baseline underperformed the popularity baseline on RetailRocket, suggesting that raw co-occurrence over sparse/noisy implicit events was not sufficient for strong candidate retrieval without additional normalization or stronger-signal filtering.

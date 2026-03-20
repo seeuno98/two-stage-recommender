@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install format lint test run-api download-data prepare-data run-popularity
+.PHONY: install format lint test run-api download-data prepare-data run-popularity run-itemknn
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -26,3 +26,6 @@ prepare-data:
 
 run-popularity:
 	$(PYTHON) -m scripts.run_popularity_baseline
+
+run-itemknn:
+	$(PYTHON) -m scripts.run_itemknn_baseline
