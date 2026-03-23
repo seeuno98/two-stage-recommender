@@ -143,5 +143,24 @@ python -m scripts.run_itemknn_baseline
 
 This matters because it provides a stronger personalized benchmark before moving to ALS candidate generation.
 
-## Result Summar
+## ALS Candidate Generation Baseline
+
+This step introduces matrix-factorization-based candidate retrieval. ALS is trained on implicit feedback using weighted user-item interactions from `train.parquet`, with `event_weight` used as the interaction strength and confidence signal.
+
+The implicit ALS model is fit on a user-item CSR matrix, and recommendation uses the matching user row from that same user-item matrix so returned indices decode correctly back into original item IDs. Unseen users in validation return no recommendations.
+
+Seen items are filtered from recommendations, and validation is performed on `val.parquet` using `Recall@10`, `Recall@20`, `Recall@50`, `NDCG@10`, `NDCG@20`, and `NDCG@50`.
+
+Run the ALS baseline with:
+
+```bash
+python -m scripts.run_als_baseline
+```
+
+This matters because it is the first latent-factor personalized retrieval model and should be a stronger benchmark before ranking.
+
+If `implicit` installation is problematic in your environment, use Python 3.11 for best compatibility.
+If BLAS oversubscription warnings appear, run with `OPENBLAS_NUM_THREADS=1`.
+
+## Result Summary
 * A naive item-item co-occurrence baseline underperformed the popularity baseline on RetailRocket, suggesting that raw co-occurrence over sparse/noisy implicit events was not sufficient for strong candidate retrieval without additional normalization or stronger-signal filtering.

@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install format lint test run-api download-data prepare-data run-popularity run-itemknn
+.PHONY: install format lint test run-api download-data prepare-data run-popularity run-itemknn run-als
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -29,3 +29,6 @@ run-popularity:
 
 run-itemknn:
 	$(PYTHON) -m scripts.run_itemknn_baseline
+
+run-als:
+	OPENBLAS_NUM_THREADS=1 $(PYTHON) -m scripts.run_als_baseline
