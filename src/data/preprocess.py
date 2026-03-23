@@ -19,6 +19,22 @@ STANDARD_EVENT_COLUMNS = {
 REQUIRED_STANDARD_COLUMNS = ["user_id", "item_id", "event_type", "timestamp"]
 
 
+def validate_standard_interaction_schema(
+    interactions: pd.DataFrame,
+    require_weight: bool = False,
+) -> None:
+    """Validate the standardized interaction schema."""
+
+    required_columns = set(REQUIRED_STANDARD_COLUMNS)
+    if require_weight:
+        required_columns.add("event_weight")
+
+    missing_columns = required_columns.difference(interactions.columns)
+    if missing_columns:
+        missing = ", ".join(sorted(missing_columns))
+        raise ValueError(f"Interactions are missing required columns: {missing}")
+
+
 def rename_retailrocket_event_columns(events: pd.DataFrame) -> pd.DataFrame:
     """Rename RetailRocket event columns into the project standard schema."""
 
@@ -44,6 +60,44 @@ def add_event_weights(events: pd.DataFrame) -> pd.DataFrame:
     weighted = events.copy()
     weighted["event_weight"] = weighted["event_type"].map(EVENT_WEIGHT_MAP)
     return weighted
+
+
+def filter_interactions_by_event_types(
+    df: pd.DataFrame,
+    allowed_event_types: list[str],
+) -> pd.DataFrame:
+    """Return a copy filtered to the requested event types."""
+
+    validate_standard_interaction_schema(df, require_weight=True)
+    if not allowed_event_types:
+        return df.iloc[0:0].copy()
+
+    filtered = df[df["event_type"].isin(allowed_event_types)].copy()
+    return filtered.reset_index(drop=True)
+
+
+def remap_event_weights(
+    df: pd.DataFrame,
+    weight_map: dict[str, float],
+) -> pd.DataFrame:
+    """Return a copy with event weights reassigned from a supplied weight map."""
+
+    validate_standard_interaction_schema(df, require_weight=True)
+
+    unknown_weight_types = sorted(set(weight_map).difference(EVENT_WEIGHT_MAP))
+    if unknown_weight_types:
+        unknown = ", ".join(unknown_weight_types)
+        raise ValueError(f"Weight map contains unsupported event types: {unknown}")
+
+    observed_event_types = set(df["event_type"].astype(str).unique())
+    missing_weight_types = sorted(observed_event_types.difference(weight_map))
+    if missing_weight_types:
+        missing = ", ".join(missing_weight_types)
+        raise ValueError(f"Weight map is missing event types present in the dataframe: {missing}")
+
+    remapped = df.copy()
+    remapped["event_weight"] = remapped["event_type"].map(weight_map).astype(float)
+    return remapped
 
 
 def drop_invalid_rows(events: pd.DataFrame) -> pd.DataFrame:

@@ -50,6 +50,7 @@ class ALSCandidateGenerator:
         self.item_id_to_idx: dict[object, int] = {}
         self.idx_to_user_id: dict[int, int | str] = {}
         self.idx_to_item_id: dict[int, object] = {}
+        self.aggregated_interactions_: pd.DataFrame | None = None
         self.user_item_matrix: sparse.csr_matrix | None = None
         self.item_user_matrix: sparse.csr_matrix | None = None
         self.model: AlternatingLeastSquares | None = None
@@ -62,6 +63,7 @@ class ALSCandidateGenerator:
         self._validate_columns(train_df)
 
         aggregated = self._aggregate_interactions(train_df)
+        self.aggregated_interactions_ = aggregated.copy()
         encoded_ids = self._build_id_maps(aggregated)
         self.user_id_to_idx = encoded_ids.user_id_to_idx
         self.item_id_to_idx = encoded_ids.item_id_to_idx
@@ -240,4 +242,5 @@ class ALSCandidateGenerator:
             "regularization": self.regularization,
             "iterations": self.iterations,
             "alpha": self.alpha,
+            "random_state": self.random_state,
         }

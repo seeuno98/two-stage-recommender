@@ -162,5 +162,35 @@ This matters because it is the first latent-factor personalized retrieval model 
 If `implicit` installation is problematic in your environment, use Python 3.11 for best compatibility.
 If BLAS oversubscription warnings appear, run with `OPENBLAS_NUM_THREADS=1`.
 
+## ALS Retrieval Experiments
+
+The first ALS baseline underperformed both the popularity baseline and the item-item baseline on RetailRocket. A likely issue is that weak-intent interactions, especially raw views, add noise to the user-item matrix and hurt retrieval quality.
+
+To diagnose that, the repository includes an ALS experiment runner that compares stronger-signal filtering strategies under the same validation protocol used for earlier baselines:
+
+- all events
+- add-to-cart plus transaction
+- transaction only
+
+Each run still fits on `train.parquet`, evaluates on `val.parquet`, treats each validation user's interacted items as relevant items, and excludes items already seen in the original training history. The experiment grid also supports different event-weight mappings and a small ALS hyperparameter sweep.
+
+ALS in `implicit` is a collaborative filtering method for implicit feedback. The model is fit on a user-item CSR matrix, and recommendation must use the matching row from that same user-item matrix for the requested user so item indices decode correctly.
+
+Run the experiments with:
+
+```bash
+python -m scripts.run_als_experiments
+```
+
+or
+
+```bash
+make run-als-experiments
+```
+
+Reports are written to `artifacts/reports/als_experiments.json`, `artifacts/reports/als_experiments.csv`, and `artifacts/reports/als_best_experiment.json`.
+
+If OpenBLAS oversubscription warnings appear, set `OPENBLAS_NUM_THREADS=1`. The Makefile target does this by default.
+
 ## Result Summary
 * A naive item-item co-occurrence baseline underperformed the popularity baseline on RetailRocket, suggesting that raw co-occurrence over sparse/noisy implicit events was not sufficient for strong candidate retrieval without additional normalization or stronger-signal filtering.
