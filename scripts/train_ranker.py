@@ -1,9 +1,8 @@
-"""Entrypoint for ranking model training."""
+"""Backward-compatible wrapper for ranker training."""
 
+from __future__ import annotations
 
-def main() -> None:
-    """Placeholder ranker training script."""
-    print("Ranking training pipeline scaffold is ready.")
+from scripts.run_lightgbm_ranker import main
 
 
 if __name__ == "__main__":

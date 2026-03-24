@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install format lint test run-api download-data prepare-data run-popularity run-itemknn run-als run-als-experiments
+.PHONY: install format lint test run-api download-data prepare-data run-popularity run-itemknn run-als run-als-experiments build-ranking-dataset run-ranker
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -35,3 +35,9 @@ run-als:
 
 run-als-experiments:
 	OPENBLAS_NUM_THREADS=1 $(PYTHON) -m scripts.run_als_experiments
+
+build-ranking-dataset:
+	$(PYTHON) -m scripts.build_ranking_dataset
+
+run-ranker:
+	$(PYTHON) -m scripts.run_lightgbm_ranker

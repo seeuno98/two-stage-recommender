@@ -192,5 +192,50 @@ Reports are written to `artifacts/reports/als_experiments.json`, `artifacts/repo
 
 If OpenBLAS oversubscription warnings appear, set `OPENBLAS_NUM_THREADS=1`. The Makefile target does this by default.
 
+## Ranking Dataset Construction
+
+The ranking stage starts by generating retrieval candidates, then labeling those candidates using future user interactions. In the first implementation, popularity retrieval is the default first-stage source because it currently performs best on validation.
+
+For each target user, the pipeline retrieves top-N unseen items from the training history, then labels each `(user_id, item_id)` candidate row with:
+
+- `label = 1` if the item appears in the user's future target interactions
+- `label = 0` otherwise
+
+Each user is one ranking group. This is important because learning-to-rank models consume grouped query data rather than treating rows as independent classification examples.
+
+Build the ranking dataset with:
+
+```bash
+python -m scripts.build_ranking_dataset
+```
+
+or
+
+```bash
+make build-ranking-dataset
+```
+
+The dataset is saved to `artifacts/features/ranking_train.parquet`, and a summary report is written to `artifacts/reports/ranking_dataset_summary.json`.
+
+## LightGBM Ranker
+
+The second stage uses LightGBM learning-to-rank to rerank the retrieved candidates. The initial implementation uses `lightgbm.LGBMRanker` with the `lambdarank` objective and evaluates reranked outputs with the same top-K metrics used elsewhere in the repository.
+
+Group or query information is required because each user's candidate set is one ranking group. The training script performs a user-level split so candidate rows from the same user do not leak across train and validation.
+
+Run the ranker with:
+
+```bash
+python -m scripts.run_lightgbm_ranker
+```
+
+or
+
+```bash
+make run-ranker
+```
+
+This architecture is hybrid once the ranker combines collaborative retrieval signals with aggregate item features and lightweight item metadata features.
+
 ## Result Summary
 * A naive item-item co-occurrence baseline underperformed the popularity baseline on RetailRocket, suggesting that raw co-occurrence over sparse/noisy implicit events was not sufficient for strong candidate retrieval without additional normalization or stronger-signal filtering.
