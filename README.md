@@ -4,7 +4,7 @@ A production-style recommender system implementing candidate retrieval and learn
 
 ## Overview
 
-This repository provides the initial scaffold for a two-stage recommendation system designed with machine learning engineering best practices in mind. The long-term goal is to support reproducible training, offline evaluation, and online serving for implicit feedback recommendation use cases.
+This repository implements an end-to-end two-stage recommender system with candidate retrieval and learning-to-rank, designed for reproducible training, offline evaluation, and extensibility to production systems.
 
 ## System Architecture
 
@@ -237,5 +237,50 @@ make run-ranker
 
 This architecture is hybrid once the ranker combines collaborative retrieval signals with aggregate item features and lightweight item metadata features.
 
+## Final System Architecture
+
+The implemented system follows a two-stage recommendation pipeline:
+
+1. Candidate Generation (Retrieval)
+   - Popularity baseline (best-performing retrieval model)
+   - Item-item co-occurrence (item-KNN)
+   - ALS (implicit matrix factorization)
+
+2. Ranking (Learning-to-Rank)
+   - LightGBM (LGBMRanker with LambdaRank objective)
+   - Ranks top-N retrieved candidates per user
+
+Pipeline:
+
+Train Data → Candidate Generation → Top-N Candidates → Feature Engineering → LightGBM Ranker → Final Recommendations
+
+## Key Results
+
+| Model                     | Recall@10 |
+|--------------------------|----------|
+| Popularity (retrieval)   | 0.0075   |
+| Item-KNN                 | 0.0027   |
+| ALS                      | 0.0019   |
+| **LightGBM Ranker (final)** | **0.3802** |
+
+The ranking stage improves Recall@10 by approximately **50×** over the best retrieval baseline.
+
+Additional metrics:
+
+- Recall@20: 0.5537
+- Recall@50: 0.8471
+- NDCG@10: 0.2428
+
 ## Result Summary
-* A naive item-item co-occurrence baseline underperformed the popularity baseline on RetailRocket, suggesting that raw co-occurrence over sparse/noisy implicit events was not sufficient for strong candidate retrieval without additional normalization or stronger-signal filtering.
+
+- Item-item co-occurrence and ALS baselines underperformed the popularity baseline on RetailRocket, indicating that naive collaborative filtering struggled under sparse and noisy implicit feedback.
+- ALS performance degraded further when restricting to high-intent signals (cart/purchase), due to loss of user-item connectivity in the interaction graph.
+- Introducing a LightGBM learning-to-rank stage dramatically improved performance, achieving a ~50× increase in Recall@10.
+- The final system demonstrates the effectiveness of a two-stage hybrid recommendation architecture combining retrieval and ranking.
+
+## Key Insights
+
+- Popularity outperformed ALS and item-KNN in retrieval due to heavy popularity skew in implicit feedback data.
+- Filtering to strong signals (cart, purchase) significantly degraded ALS performance due to loss of user-item graph connectivity.
+- Ranking is critical: retrieval alone is insufficient, but a learning-to-rank model can effectively combine weak signals into strong recommendations.
+- Hybrid features (user behavior, item popularity, interaction history, metadata) are essential for ranking performance.
