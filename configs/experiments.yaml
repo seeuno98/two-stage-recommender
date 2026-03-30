@@ -1,0 +1,32 @@
+experiments:
+  - name: popularity_vs_ranker
+    description: Compare popularity retrieval against the full reranked popularity pipeline on held-out test users.
+    assignment:
+      method: hash_mod
+      id_col: user_id
+      split:
+        control: 50
+        treatment: 50
+    variants:
+      control:
+        pipeline: popularity_only
+        candidate_k: 100
+      treatment:
+        pipeline: popularity_plus_ranker
+        candidate_k: 100
+
+  - name: ranker_candidate_count_100_vs_150
+    description: Compare two reranked popularity pipelines with different popularity candidate pool sizes.
+    assignment:
+      method: hash_mod
+      id_col: user_id
+      split:
+        control: 50
+        treatment: 50
+    variants:
+      control:
+        pipeline: popularity_plus_ranker
+        candidate_k: 100
+      treatment:
+        pipeline: popularity_plus_ranker
+        candidate_k: 150

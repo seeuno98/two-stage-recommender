@@ -6,14 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.candidate_gen.popularity import PopularityRecommender
-from src.ranking.dataset import (
-    build_ground_truth,
-    build_labeled_ranking_dataframe,
-    build_user_histories,
-    make_candidate_pool_for_users,
-)
-from src.ranking.features import add_ranking_features
+from src.ranking.dataset import build_ranking_dataset_from_splits
 from src.utils.io import save_json
 
 
@@ -23,9 +16,12 @@ FEATURES_DIR = ARTIFACTS_DIR / "features"
 REPORTS_DIR = ARTIFACTS_DIR / "reports"
 TRAIN_PATH = PROCESSED_DIR / "train.parquet"
 VAL_PATH = PROCESSED_DIR / "val.parquet"
+TEST_PATH = PROCESSED_DIR / "test.parquet"
 ITEM_FEATURES_PATH = PROCESSED_DIR / "item_features.parquet"
-RANKING_DATASET_PATH = FEATURES_DIR / "ranking_train.parquet"
-SUMMARY_PATH = REPORTS_DIR / "ranking_dataset_summary.json"
+RANKING_TRAIN_PATH = FEATURES_DIR / "ranking_train.parquet"
+RANKING_TEST_PATH = FEATURES_DIR / "ranking_test.parquet"
+SUMMARY_TRAIN_PATH = REPORTS_DIR / "ranking_train_summary.json"
+SUMMARY_TEST_PATH = REPORTS_DIR / "ranking_test_summary.json"
 DEFAULT_TOP_N = 100
 
 
@@ -40,88 +36,60 @@ def load_parquet(path: Path) -> pd.DataFrame:
 
 
 def build_ranking_dataset(
-    train_df: pd.DataFrame,
-    val_df: pd.DataFrame,
-    item_features_df: pd.DataFrame | None = None,
+    mode: str = "train",
     top_n: int = DEFAULT_TOP_N,
-) -> tuple[pd.DataFrame, list[str], dict[str, float | int]]:
-    """Construct the end-to-end ranking dataset for train-to-validation supervision."""
+) -> None:
+    """Build and persist ranking training or test candidate datasets.
 
-    train_histories = build_user_histories(train_df)
-    val_ground_truth = build_ground_truth(val_df)
-    eval_histories = {
-        user_id: train_histories.get(user_id, set())
-        for user_id in val_ground_truth
-    }
+    mode: "train" builds train->val dataset and saves ranking_train.parquet
+    mode: "test" builds (train+val)->test candidate dataset and saves ranking_test.parquet
+    """
 
-    retriever = PopularityRecommender().fit(train_df)
-    candidate_df = make_candidate_pool_for_users(
-        retriever=retriever,
-        user_histories=eval_histories,
-        top_n=top_n,
-    )
-    labeled_df = build_labeled_ranking_dataframe(candidate_df, ground_truth=val_ground_truth)
-    ranking_df, feature_cols = add_ranking_features(
-        candidates=labeled_df,
-        train_df=train_df,
-        item_features_df=item_features_df,
-    )
-
-    positives = int(ranking_df["label"].sum())
-    negatives = int(len(ranking_df) - positives)
-    summary: dict[str, float | int] = {
-        "users": int(ranking_df["user_id"].nunique()),
-        "total_candidate_rows": int(len(ranking_df)),
-        "positives": positives,
-        "negatives": negatives,
-        "positive_rate": float(positives / len(ranking_df)) if len(ranking_df) else 0.0,
-        "average_candidates_per_user": float(
-            len(ranking_df) / ranking_df["user_id"].nunique()
-        )
-        if len(ranking_df)
-        else 0.0,
-        "feature_count": int(len(feature_cols)),
-        "top_n": int(top_n),
-    }
-    return ranking_df, feature_cols, summary
-
-
-def main() -> None:
-    """Build and save the ranking dataset."""
+    if mode not in {"train", "test"}:
+        raise ValueError("mode must be one of 'train' or 'test'")
 
     train_df = load_parquet(TRAIN_PATH)
     val_df = load_parquet(VAL_PATH)
     item_features_df = load_parquet(ITEM_FEATURES_PATH)
 
-    ranking_df, feature_cols, summary = build_ranking_dataset(
-        train_df=train_df,
-        val_df=val_df,
+    if mode == "train":
+        ranking_df, feature_cols, summary = build_ranking_dataset_from_splits(
+            history_df=train_df,
+            target_df=val_df,
+            item_features_df=item_features_df,
+            candidate_top_n=top_n,
+        )
+        FEATURES_DIR.mkdir(parents=True, exist_ok=True)
+        ranking_df.to_parquet(RANKING_TRAIN_PATH, index=False)
+        save_json({**summary, "feature_columns": feature_cols, "dataset_path": str(RANKING_TRAIN_PATH)}, SUMMARY_TRAIN_PATH)
+        print(f"[ranking-dataset] saved {RANKING_TRAIN_PATH}")
+        return
+
+    # mode == test
+    full_histories = pd.concat([train_df, val_df], ignore_index=True)
+    test_df = load_parquet(TEST_PATH)
+    ranking_df, feature_cols, summary = build_ranking_dataset_from_splits(
+        history_df=full_histories,
+        target_df=test_df,
         item_features_df=item_features_df,
+        candidate_top_n=top_n,
     )
-
     FEATURES_DIR.mkdir(parents=True, exist_ok=True)
-    ranking_df.to_parquet(RANKING_DATASET_PATH, index=False)
-    save_json(
-        {
-            **summary,
-            "feature_columns": feature_cols,
-            "dataset_path": str(RANKING_DATASET_PATH),
-        },
-        SUMMARY_PATH,
-    )
+    ranking_df.to_parquet(RANKING_TEST_PATH, index=False)
+    save_json({**summary, "feature_columns": feature_cols, "dataset_path": str(RANKING_TEST_PATH)}, SUMMARY_TEST_PATH)
+    print(f"[ranking-dataset] saved {RANKING_TEST_PATH}")
 
-    print(f"[ranking-dataset] users={summary['users']}")
-    print(f"[ranking-dataset] rows={summary['total_candidate_rows']}")
-    print(f"[ranking-dataset] positives={summary['positives']}")
-    print(f"[ranking-dataset] negatives={summary['negatives']}")
-    print(f"[ranking-dataset] positive_rate={summary['positive_rate']:.4f}")
-    print(
-        "[ranking-dataset]"
-        f" avg_candidates_per_user={summary['average_candidates_per_user']:.2f}"
-    )
-    print(f"[ranking-dataset] feature_count={summary['feature_count']}")
-    print(f"[ranking-dataset] dataset={RANKING_DATASET_PATH}")
-    print(f"[ranking-dataset] summary={SUMMARY_PATH}")
+
+def main() -> None:
+    """CLI entrypoint for building train or test ranking datasets."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Build ranking datasets (train or test candidates)")
+    parser.add_argument("--mode", choices=["train", "test"], default="train")
+    parser.add_argument("--candidate-k", type=int, default=DEFAULT_TOP_N)
+    args = parser.parse_args()
+
+    build_ranking_dataset(mode=args.mode, top_n=args.candidate_k)
 
 
 if __name__ == "__main__":

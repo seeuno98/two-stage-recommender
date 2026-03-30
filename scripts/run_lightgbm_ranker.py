@@ -8,9 +8,10 @@ import pandas as pd
 
 from scripts.build_ranking_dataset import (
     ITEM_FEATURES_PATH,
-    RANKING_DATASET_PATH,
     TRAIN_PATH,
     VAL_PATH,
+    RANKING_TRAIN_PATH,
+    RANKING_TEST_PATH,
     build_ranking_dataset,
     load_parquet,
 )
@@ -48,21 +49,14 @@ BASELINE_PATHS = {
 
 def ensure_ranking_dataset() -> pd.DataFrame:
     """Load the ranking dataset, rebuilding it if needed."""
-
-    if RANKING_DATASET_PATH.exists():
-        return pd.read_parquet(RANKING_DATASET_PATH)
+    if RANKING_TRAIN_PATH.exists():
+        return pd.read_parquet(RANKING_TRAIN_PATH)
 
     train_df = load_parquet(TRAIN_PATH)
     val_df = load_parquet(VAL_PATH)
     item_features_df = load_parquet(ITEM_FEATURES_PATH)
-    ranking_df, _, _ = build_ranking_dataset(
-        train_df=train_df,
-        val_df=val_df,
-        item_features_df=item_features_df,
-    )
-    RANKING_DATASET_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ranking_df.to_parquet(RANKING_DATASET_PATH, index=False)
-    return ranking_df
+    build_ranking_dataset(mode="train")
+    return pd.read_parquet(RANKING_TRAIN_PATH)
 
 
 def extract_metrics(payload: dict[str, object] | None) -> dict[str, float] | None:
@@ -101,78 +95,139 @@ def print_baseline_comparison(metrics: dict[str, float]) -> None:
 
 def main() -> None:
     """Train and validate the LightGBM ranking stage."""
+    import argparse
 
-    ranking_df = ensure_ranking_dataset()
-    feature_cols = get_feature_columns(ranking_df)
-    train_df, valid_df = split_ranking_dataset_by_user(ranking_df, valid_frac=0.2, random_state=42)
+    parser = argparse.ArgumentParser(description="Run LightGBM ranker (validation or test mode)")
+    parser.add_argument("--mode", choices=["valid", "test"], default="test")
+    args = parser.parse_args()
 
-    X_train = train_df[feature_cols]
-    y_train = train_df["label"]
-    group_train = build_group_array(train_df)
+    mode = args.mode
+    if mode == "valid":
+        ranking_df = ensure_ranking_dataset()
+        feature_cols = get_feature_columns(ranking_df)
+        train_df, valid_df = split_ranking_dataset_by_user(ranking_df, valid_frac=0.2, random_state=42)
 
-    X_valid = valid_df[feature_cols]
-    y_valid = valid_df["label"]
-    group_valid = build_group_array(valid_df)
+        X_train = train_df[feature_cols]
+        y_train = train_df["label"]
+        group_train = build_group_array(train_df)
 
-    model = train_lgbm_ranker(
-        X_train=X_train,
-        y_train=y_train,
-        group_train=group_train,
-        X_valid=X_valid,
-        y_valid=y_valid,
-        group_valid=group_valid,
-    )
+        X_valid = valid_df[feature_cols]
+        y_valid = valid_df["label"]
+        group_valid = build_group_array(valid_df)
 
-    valid_ground_truth = build_ground_truth(valid_df[valid_df["label"] == 1][["user_id", "item_id"]])
-    metrics, ranked_valid_df = evaluate_lgbm_ranker(
-        model=model,
-        candidate_df=valid_df,
-        feature_cols=feature_cols,
-        ground_truth=valid_ground_truth,
-        k_values=K_VALUES,
-    )
-    predictions = topk_predictions_from_ranked_df(ranked_valid_df, k=max(K_VALUES))
-
-    save_lgbm_metrics(metrics, RANKER_METRICS_PATH)
-    feature_importance_df = save_feature_importance(model, feature_cols, FEATURE_IMPORTANCE_PATH)
-    save_lgbm_model(model, MODEL_PATH)
-    save_json(
-        {
-            "train_users": int(train_df["user_id"].nunique()),
-            "valid_users": int(valid_df["user_id"].nunique()),
-            "train_rows": int(len(train_df)),
-            "valid_rows": int(len(valid_df)),
-            "feature_count": int(len(feature_cols)),
-            "feature_columns": feature_cols,
-            "metrics": metrics,
-            "model_path": str(MODEL_PATH),
-            "feature_importance_path": str(FEATURE_IMPORTANCE_PATH),
-            "num_predictions": int(sum(len(items) for items in predictions.values())),
-        },
-        RANKER_SUMMARY_PATH,
-    )
-
-    print(f"[ranker] train_users={train_df['user_id'].nunique()}")
-    print(f"[ranker] valid_users={valid_df['user_id'].nunique()}")
-    print(f"[ranker] train_rows={len(train_df)}")
-    print(f"[ranker] valid_rows={len(valid_df)}")
-    print(f"[ranker] feature_count={len(feature_cols)}")
-    for k in K_VALUES:
-        print(f"[ranker] Recall@{k}={metrics[f'recall@{k}']:.4f}")
-        print(f"[ranker] NDCG@{k}={metrics[f'ndcg@{k}']:.4f}")
-    print(f"[ranker] metrics={RANKER_METRICS_PATH}")
-    print(f"[ranker] feature_importance={FEATURE_IMPORTANCE_PATH}")
-    print(f"[ranker] model={MODEL_PATH}")
-    print(f"[ranker] summary={RANKER_SUMMARY_PATH}")
-    if not feature_importance_df.empty:
-        top_feature = feature_importance_df.iloc[0]
-        print(
-            "[ranker]"
-            f" top_feature={top_feature['feature']}"
-            f" gain={float(top_feature['importance_gain']):.2f}"
+        model = train_lgbm_ranker(
+            X_train=X_train,
+            y_train=y_train,
+            group_train=group_train,
+            X_valid=X_valid,
+            y_valid=y_valid,
+            group_valid=group_valid,
         )
 
-    print_baseline_comparison(metrics)
+        valid_ground_truth = build_ground_truth(valid_df[valid_df["label"] == 1][["user_id", "item_id"]])
+        metrics, ranked_valid_df = evaluate_lgbm_ranker(
+            model=model,
+            candidate_df=valid_df,
+            feature_cols=feature_cols,
+            ground_truth=valid_ground_truth,
+            k_values=K_VALUES,
+        )
+        predictions = topk_predictions_from_ranked_df(ranked_valid_df, k=max(K_VALUES))
+
+        save_lgbm_metrics(metrics, RANKER_METRICS_PATH)
+        feature_importance_df = save_feature_importance(model, feature_cols, FEATURE_IMPORTANCE_PATH)
+        save_lgbm_model(model, MODEL_PATH)
+        save_json(
+            {
+                "train_users": int(train_df["user_id"].nunique()),
+                "valid_users": int(valid_df["user_id"].nunique()),
+                "train_rows": int(len(train_df)),
+                "valid_rows": int(len(valid_df)),
+                "feature_count": int(len(feature_cols)),
+                "feature_columns": feature_cols,
+                "metrics": metrics,
+                "model_path": str(MODEL_PATH),
+                "feature_importance_path": str(FEATURE_IMPORTANCE_PATH),
+                "num_predictions": int(sum(len(items) for items in predictions.values())),
+            },
+            RANKER_SUMMARY_PATH,
+        )
+
+        print(f"[ranker] train_users={train_df['user_id'].nunique()}")
+        print(f"[ranker] valid_users={valid_df['user_id'].nunique()}")
+        print(f"[ranker] train_rows={len(train_df)}")
+        print(f"[ranker] valid_rows={len(valid_df)}")
+        print(f"[ranker] feature_count={len(feature_cols)}")
+        for k in K_VALUES:
+            print(f"[ranker] Recall@{k}={metrics[f'recall@{k}']:.4f}")
+            print(f"[ranker] NDCG@{k}={metrics[f'ndcg@{k}']:.4f}")
+        print(f"[ranker] metrics={RANKER_METRICS_PATH}")
+        print(f"[ranker] feature_importance={FEATURE_IMPORTANCE_PATH}")
+        print(f"[ranker] model={MODEL_PATH}")
+        print(f"[ranker] summary={RANKER_SUMMARY_PATH}")
+        if not feature_importance_df.empty:
+            top_feature = feature_importance_df.iloc[0]
+            print(
+                "[ranker]"
+                f" top_feature={top_feature['feature']}"
+                f" gain={float(top_feature['importance_gain']):.2f}"
+            )
+
+        print_baseline_comparison(metrics)
+
+    else:
+        # test mode: train on full ranking_train.parquet and score ranking_test.parquet
+        if not RANKING_TRAIN_PATH.exists():
+            build_ranking_dataset(mode="train")
+        if not RANKING_TEST_PATH.exists():
+            build_ranking_dataset(mode="test")
+
+        train_df = pd.read_parquet(RANKING_TRAIN_PATH)
+        feature_cols = get_feature_columns(train_df)
+
+        X_train = train_df[feature_cols]
+        y_train = train_df["label"]
+        group_train = build_group_array(train_df)
+
+        model = train_lgbm_ranker(
+            X_train=X_train,
+            y_train=y_train,
+            group_train=group_train,
+            X_valid=None,
+            y_valid=None,
+            group_valid=None,
+        )
+
+        test_df = pd.read_parquet(RANKING_TEST_PATH)
+        test_ground_truth = build_ground_truth(test_df[test_df["label"] == 1][["user_id", "item_id"]])
+        metrics, ranked_test_df = evaluate_lgbm_ranker(
+            model=model,
+            candidate_df=test_df,
+            feature_cols=feature_cols,
+            ground_truth=test_ground_truth,
+            k_values=K_VALUES,
+        )
+
+        save_lgbm_metrics(metrics, RANKER_METRICS_PATH)
+        save_lgbm_model(model, MODEL_PATH)
+        save_json(
+            {
+                "train_rows": int(len(train_df)),
+                "test_rows": int(len(test_df)),
+                "feature_count": int(len(feature_cols)),
+                "metrics": metrics,
+                "model_path": str(MODEL_PATH),
+            },
+            RANKER_SUMMARY_PATH,
+        )
+
+        print(f"[ranker] trained_on=ranking_train.parquet")
+        for k in K_VALUES:
+            print(f"[ranker] Recall@{k}={metrics[f'recall@{k}']:.4f}")
+            print(f"[ranker] NDCG@{k}={metrics[f'ndcg@{k}']:.4f}")
+        print(f"[ranker] metrics={RANKER_METRICS_PATH}")
+        print(f"[ranker] model={MODEL_PATH}")
+        print(f"[ranker] summary={RANKER_SUMMARY_PATH}")
 
 
 if __name__ == "__main__":

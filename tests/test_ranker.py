@@ -10,6 +10,7 @@ from src.ranking.dataset import (
     build_labeled_ranking_dataframe,
     make_candidate_pool_for_users,
 )
+from src.ranking.dataset import build_ranking_dataset_from_splits
 from src.ranking.predict import rerank_candidates, topk_predictions_from_ranked_df
 from src.ranking.train_ranker import split_ranking_dataset_by_user
 
@@ -106,3 +107,48 @@ def test_candidate_pool_generation_excludes_seen_items() -> None:
 
     assert candidates[candidates["user_id"] == 1]["item_id"].tolist() == [20, 30]
     assert candidates[candidates["user_id"] == 2]["item_id"].tolist() == [10, 20]
+
+
+def test_build_ranking_dataset_from_splits_train_and_test_behaviour() -> None:
+    # toy interactions
+    train = pd.DataFrame(
+        {
+            "user_id": [1, 2],
+            "item_id": [10, 20],
+            "event_weight": [1.0, 1.0],
+            "timestamp": pd.to_datetime(["2020-01-01", "2020-01-02"]),
+        }
+    )
+    val = pd.DataFrame(
+        {
+            "user_id": [1],
+            "item_id": [30],
+            "event_weight": [1.0],
+            "timestamp": pd.to_datetime(["2020-01-03"]),
+        }
+    )
+    test = pd.DataFrame(
+        {
+            "user_id": [1],
+            "item_id": [40],
+            "event_weight": [1.0],
+            "timestamp": pd.to_datetime(["2020-01-04"]),
+        }
+    )
+
+    # build train->val ranking dataset (labels come from val)
+    ranking_train, feature_cols_train, summary_train = build_ranking_dataset_from_splits(
+        history_df=train, target_df=val, item_features_df=None, candidate_top_n=10
+    )
+    # user 1 should have label=1 for item 30 in training ranking dataset
+    labels_for_user1 = ranking_train[ranking_train["user_id"] == 1].set_index("item_id")["label"].to_dict()
+    assert labels_for_user1.get(30) == 1
+
+    # build (train+val)->test ranking dataset
+    full_history = pd.concat([train, val], ignore_index=True)
+    ranking_test, feature_cols_test, summary_test = build_ranking_dataset_from_splits(
+        history_df=full_history, target_df=test, item_features_df=None, candidate_top_n=10
+    )
+    # user 1 should have label=1 for item 40 in test candidate dataset
+    labels_for_user1_test = ranking_test[ranking_test["user_id"] == 1].set_index("item_id")["label"].to_dict()
+    assert labels_for_user1_test.get(40) == 1

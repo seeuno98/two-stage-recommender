@@ -203,19 +203,14 @@ For each target user, the pipeline retrieves top-N unseen items from the trainin
 
 Each user is one ranking group. This is important because learning-to-rank models consume grouped query data rather than treating rows as independent classification examples.
 
-Build the ranking dataset with:
+Build the ranking dataset with the temporal-consistent modes:
 
 ```bash
-python -m scripts.build_ranking_dataset
+python -m scripts.build_ranking_dataset --mode train   # build train->val ranking dataset
+python -m scripts.build_ranking_dataset --mode test    # build (train+val)->test candidate dataset
 ```
 
-or
-
-```bash
-make build-ranking-dataset
-```
-
-The dataset is saved to `artifacts/features/ranking_train.parquet`, and a summary report is written to `artifacts/reports/ranking_dataset_summary.json`.
+The training ranking dataset is saved to `artifacts/features/ranking_train.parquet` and the test candidate dataset to `artifacts/features/ranking_test.parquet`. Summary reports are written under `artifacts/reports/`.
 
 ## LightGBM Ranker
 
@@ -223,19 +218,57 @@ The second stage uses LightGBM learning-to-rank to rerank the retrieved candidat
 
 Group or query information is required because each user's candidate set is one ranking group. The training script performs a user-level split so candidate rows from the same user do not leak across train and validation.
 
-Run the ranker with:
+Run the ranker with two evaluation modes:
 
 ```bash
-python -m scripts.run_lightgbm_ranker
+python -m scripts.run_lightgbm_ranker --mode valid   # train on ranking_train.parquet and validate
+python -m scripts.run_lightgbm_ranker --mode test    # train on ranking_train.parquet, score ranking_test.parquet
+```
+
+By default `--mode test` performs the stricter held-out evaluation using a ranker trained on `train->val` and scored on the `(train+val)->test` candidate set.
+
+This architecture is hybrid once the ranker combines collaborative retrieval signals with aggregate item features and lightweight item metadata features.
+
+## Offline Experiment Framework
+
+This stage adds a practical offline experimentation workflow for comparing recommendation variants in a control-vs-treatment style setup. The framework is inspired by A/B testing patterns, but it remains fully offline: users are deterministically assigned to experiment variants with stable hashing, each variant generates recommendations for its own assigned users, and every variant is evaluated with the same offline metrics on held-out data.
+
+The current implementation supports these first-pass pipeline variants:
+
+- `popularity_only`
+- `itemknn_only`
+- `als_only`
+- `popularity_plus_ranker`
+
+Experiment definitions live in `configs/experiments.yaml`. Each experiment declares a deterministic split such as `control: 50` and `treatment: 50`, plus per-variant pipeline settings like `candidate_k` and optional excluded ranker features.
+
+Run all configured experiments with:
+
+```bash
+python -m scripts.run_experiment
+```
+
+Run one named experiment with:
+
+```bash
+python -m scripts.run_experiment --experiment popularity_vs_ranker
 ```
 
 or
 
 ```bash
-make run-ranker
+make run-experiments
 ```
 
-This architecture is hybrid once the ranker combines collaborative retrieval signals with aggregate item features and lightweight item metadata features.
+Reports are saved under `artifacts/reports/experiments/<experiment_name>/` and include:
+
+- `results.json`
+- `variant_metrics.csv`
+- `summary.txt`
+
+Each report includes per-variant user counts, Recall@K / NDCG@K metrics, and simple lift calculations versus the control variant.
+
+This is intentionally an offline framework. It does not simulate live traffic routing, delayed feedback, interference effects, or true online causal impact. Its purpose is to make variant comparison reproducible and operationally similar to control-vs-treatment evaluation without pretending to be a real production experiment platform.
 
 ## Final System Architecture
 
