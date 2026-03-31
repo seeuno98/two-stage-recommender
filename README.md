@@ -12,7 +12,7 @@ The system is organized into two primary stages:
 
 ### Candidate Generation Stage
 
-The first stage retrieves a manageable set of relevant candidate items for each user. Planned approaches include popularity baselines, item-based nearest neighbors, and Alternating Least Squares (ALS) models trained on implicit interaction data.
+The first stage retrieves a manageable set of relevant candidate items for each user. Implemented approaches include popularity baselines, item-item co-occurrence, and Alternating Least Squares (ALS) models trained on implicit interaction data.
 
 ### Ranking Stage
 
@@ -231,7 +231,7 @@ This architecture is hybrid once the ranker combines collaborative retrieval sig
 
 ## Offline Experiment Framework
 
-This stage adds a practical offline experimentation workflow for comparing recommendation variants in a control-vs-treatment style setup. The framework is inspired by A/B testing patterns, but it remains fully offline: users are deterministically assigned to experiment variants with stable hashing, each variant generates recommendations for its own assigned users, and every variant is evaluated with the same offline metrics on held-out data.
+This stage adds a practical offline experimentation workflow for comparing recommendation variants in a control-vs-treatment style setup. The framework is inspired by A/B testing patterns, but it remains fully offline: users are deterministically assigned to experiment variants with stable hashing, each variant generates recommendations for its own assigned users, and every variant is evaluated with the same offline metrics on held-out data. In the current experiments, the framework surfaced two useful findings: the reranked pipeline underperformed the popularity baseline under stricter temporal test evaluation, and increasing candidate pool size from 100 to 150 improved reranked Recall@10.
 
 The current implementation supports these first-pass pipeline variants:
 
@@ -286,34 +286,127 @@ The implemented system follows a two-stage recommendation pipeline:
 Pipeline:
 
 Train Data → Candidate Generation → Top-N Candidates → Feature Engineering → LightGBM Ranker → Final Recommendations
+## Makefile Commands
+
+The repository includes a Makefile to simplify common workflows for data preparation, model training, evaluation, and experiments.
+
+### Setup
+
+```bash
+make install
+make test
+```
+
+### Data Pipeline
+```bash
+make download-data
+make prepare-data
+```
+
+### Retrieval Baselines
+```bash
+make run-popularity
+make run-itemknn
+make run-als
+make run-als-experiments
+```
+
+### Ranking Pipeline
+```bash
+make build-ranking-train   # build train -> val ranking dataset
+make build-ranking-test      # build (train + val) -> test candidate dataset
+make run-ranker-valid        # validation-style ranker evaluation
+make run-ranker-test         # stricter held-out temporal test evaluation
+```
+
+### Offline Experiments
+```bash
+make run-experiments
+```
+
+### API Serving
+```bash
+make run-api
+```
+
+## Reproducing the Main Results
+
+### 1. Prepare the dataset
+```bash
+make download-data
+make prepare-data
+```
+
+### 2. Run retrieval baselines
+```bash
+make run-popularity
+make run-itemknn
+make run-als
+make run-als-experiments
+```
+
+### 3. Build ranking datasets
+```bash
+make build-ranking-dataset
+make build-ranking-test
+```
+
+### 4. Run ranker evaluations
+```bash
+make run-ranker-valid
+make run-ranker-test
+```
+
+### 5. Run offline control-vs-treatment experiments
+```bash
+make run-experiments
+```
+
+## Notes
+run-ranker-valid reports validation-stage ranking performance and is useful for model development, but is optimistic relative to true future-data evaluation.
+run-ranker-test performs the stricter temporal evaluation using a ranker trained on train -> val and scored on (train + val) -> test.
+run-experiments uses deterministic user assignment for offline control-vs-treatment style comparisons.
+ALS-related commands set OPENBLAS_NUM_THREADS=1 to reduce thread oversubscription.
+run-experiments sets OMP_NUM_THREADS=4 and OPENBLAS_NUM_THREADS=1 to keep experiment runs more stable under WSL.
 
 ## Key Results
 
-| Model                     | Recall@10 |
-|--------------------------|----------|
-| Popularity (retrieval)   | 0.0075   |
-| Item-KNN                 | 0.0027   |
-| ALS                      | 0.0019   |
-| **LightGBM Ranker (final)** | **0.3802** |
+### Retrieval Baselines (validation)
 
-The ranking stage improves Recall@10 by approximately **50×** over the best retrieval baseline.
+| Model                   | Recall@10 |
+|------------------------|----------:|
+| Popularity             | 0.0075    |
+| Item-KNN               | 0.0027    |
+| ALS                    | 0.0019    |
 
-Additional metrics:
+### Ranker Performance
 
-- Recall@20: 0.5537
-- Recall@50: 0.8471
-- NDCG@10: 0.2428
+**Validation (user-level split on ranking_train.parquet)**  
+- Recall@10: 0.3802  
+- Recall@20: 0.5537  
+- Recall@50: 0.8471  
+- NDCG@10: 0.2428  
+
+**Held-out temporal test ((train+val) -> test)**  
+- Recall@10: 0.1601  
+- Recall@20: 0.2621  
+- Recall@50: 0.5534  
+- NDCG@10: 0.0790  
+
+The validation-stage ranker showed strong gains over retrieval-only baselines, but stricter temporal evaluation on held-out test data revealed a substantial generalization gap.
 
 ## Result Summary
 
 - Item-item co-occurrence and ALS baselines underperformed the popularity baseline on RetailRocket, indicating that naive collaborative filtering struggled under sparse and noisy implicit feedback.
 - ALS performance degraded further when restricting to high-intent signals (cart/purchase), due to loss of user-item connectivity in the interaction graph.
-- Introducing a LightGBM learning-to-rank stage dramatically improved performance, achieving a ~50× increase in Recall@10.
-- The final system demonstrates the effectiveness of a two-stage hybrid recommendation architecture combining retrieval and ranking.
+- The LightGBM ranker achieved large gains in validation, improving Recall@10 from 0.0075 to 0.3802, but held-out temporal test evaluation showed a lower Recall@10 of 0.1601, highlighting a meaningful generalization gap.
+- Offline control-vs-treatment experiments showed that increasing candidate pool size from 100 to 150 improved reranked Recall@10, indicating a trade-off between candidate recall and ranking noise.
+- The final system demonstrates a realistic two-stage recommendation workflow in which retrieval quality, candidate pool size, and temporal generalization all materially affect ranking performance.
 
 ## Key Insights
 
 - Popularity outperformed ALS and item-KNN in retrieval due to heavy popularity skew in implicit feedback data.
-- Filtering to strong signals (cart, purchase) significantly degraded ALS performance due to loss of user-item graph connectivity.
-- Ranking is critical: retrieval alone is insufficient, but a learning-to-rank model can effectively combine weak signals into strong recommendations.
-- Hybrid features (user behavior, item popularity, interaction history, metadata) are essential for ranking performance.
+- Filtering to strong signals (cart, purchase) significantly degraded ALS performance because it reduced user-item graph connectivity and coverage.
+- Validation-stage ranking gains did not fully generalize to held-out temporal test data, highlighting the importance of strict temporal evaluation for recommendation systems.
+- Candidate pool size exhibited non-monotonic behavior: increasing top-K from 100 to 120 hurt reranking performance, while increasing to 150 improved Recall@10, indicating a trade-off between candidate recall and ranking noise.
+- Hybrid ranking features across user behavior, item popularity, interaction history, and metadata were effective, but feature robustness mattered more under held-out test evaluation than under validation.

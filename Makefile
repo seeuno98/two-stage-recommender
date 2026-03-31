@@ -36,7 +36,7 @@ run-als:
 run-als-experiments:
 	OPENBLAS_NUM_THREADS=1 $(PYTHON) -m scripts.run_als_experiments
 
-build-ranking-dataset:
+build-ranking-train:
 	$(PYTHON) -m scripts.build_ranking_dataset --mode train
 
 build-ranking-test:
