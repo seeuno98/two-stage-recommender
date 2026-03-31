@@ -262,7 +262,7 @@ make run-experiments
 
 ## FastAPI Recommendation Service
 
-Stage 3 adds a lightweight online inference layer on top of the existing retrieval and ranking artifacts. The service loads local artifacts at startup, serves recommendations through FastAPI, measures per-request latency, emits structured request logs, and gracefully falls back to popularity recommendations when reranking artifacts are unavailable.
+A lightweight online inference layer sits on top of the existing retrieval and ranking pipeline. The service loads recommendation artifacts at startup, serves recommendations through FastAPI, measures per-request latency, emits structured request logs, and gracefully falls back to popularity-based recommendations when reranking artifacts are unavailable.
 
 The API currently supports two serving pipelines:
 
@@ -303,20 +303,41 @@ Current latency logging is intended for local profiling and debugging. Each requ
 
 ## Serving Performance and Observability
 
-Stage 3.5 improves the local FastAPI service with startup initialization, in-memory feature lookups, latency breakdown, request middleware, and lightweight candidate caching. The service keeps static artifacts loaded once at startup, uses precomputed user and item feature maps for the reranked path, and adds a small bounded in-memory cache for repeated candidate generation work.
+The FastAPI service is optimized with startup initialization, in-memory feature lookups, latency breakdown, request middleware, and lightweight candidate caching. Static artifacts are loaded once at startup, user and item feature maps are precomputed for reranked inference, and a bounded in-memory cache reduces repeated candidate generation work.
 
-Recommendation responses and logs now track latency across several stages:
+The service now measures latency across multiple stages:
 
 - `candidate_generation_ms`
 - `feature_build_ms`
 - `scoring_ms`
 - `total_latency_ms`
 
-Structured request logs also include request ID, endpoint, requested pipeline, effective pipeline, candidate pool size, whether the user was known, whether fallback was used, and whether the ranker actually ran.
+For a known-user reranked request (`pipeline=popularity_plus_ranker`), the current local service responds in approximately **17 ms**, with the largest share of latency coming from model scoring rather than candidate generation. In one representative request:
 
-Unseen-user fallback remains much faster than reranked inference because it bypasses feature construction and model scoring entirely. The current service is optimized for local development, debugging, and profiling rather than distributed deployment.
+- candidate generation: **0.166 ms**
+- feature construction: **3.687 ms**
+- ranker scoring: **12.092 ms**
+- total latency: **17.017 ms**
 
-Startup loading is implemented with FastAPI lifespan, and per-request request IDs plus timing headers are added with request middleware.
+For unseen users, the service falls back to the popularity pipeline, which is much faster because it bypasses feature construction and model scoring entirely. In one representative unseen-user request, total latency was approximately **0.046 ms**. :contentReference[oaicite:0]{index=0}
+
+Structured request logs and response metadata include:
+- request ID
+- requested pipeline
+- effective pipeline
+- candidate pool size
+- whether the user was known
+- whether fallback was used
+- fallback reason
+- whether the ranker actually ran
+- latency breakdown
+- model version and artifact source paths
+
+This makes the service easier to debug and profile, and helps explain the trade-off between:
+- **fast heuristic recommendations** (`popularity_only`)
+- **higher-quality but more expensive reranked recommendations** (`popularity_plus_ranker`)
+
+The current service is optimized for **local development, debugging, and profiling**, rather than distributed deployment. Startup loading is implemented with FastAPI lifespan, and request IDs plus timing headers are added with request middleware.
 
 Example request:
 
