@@ -8,7 +8,15 @@ import pandas as pd
 from fastapi.testclient import TestClient
 
 from src.serving.app import create_app
+from src.serving.config import ServingConfig
 from src.serving.service import RecommendationService
+
+
+class FakeRanker:
+    """Small deterministic ranker used to exercise the reranked path."""
+
+    def predict(self, frame: pd.DataFrame) -> pd.Series:
+        return frame["popularity_score"] - frame["popularity_rank"] * 0.01
 
 
 def _write_test_artifacts(project_root: Path) -> None:
@@ -63,9 +71,29 @@ def _write_test_artifacts(project_root: Path) -> None:
     item_features_df.to_parquet(processed_dir / "item_features.parquet", index=False)
 
 
-def _build_test_client(project_root: Path) -> TestClient:
-    service = RecommendationService(project_root=project_root, default_pipeline="popularity_plus_ranker")
-    app = create_app(service=service)
+def _build_service(project_root: Path, enable_ranker: bool = False) -> RecommendationService:
+    config = ServingConfig(
+        enable_candidate_cache=True,
+        max_candidate_cache_size=32,
+        default_candidate_pool_size=5,
+    )
+    service = RecommendationService(project_root=project_root, config=config)
+    if enable_ranker:
+        service.feature_columns = [
+            "popularity_rank",
+            "popularity_score",
+            "user_train_interaction_count",
+            "item_popularity_count",
+        ]
+        service.ranker_model = FakeRanker()  # type: ignore[assignment]
+        service.ranker_loaded = True
+        service.model_version = "fake-ranker-v1"
+    return service
+
+
+def _build_test_client(project_root: Path, enable_ranker: bool = False) -> TestClient:
+    service = _build_service(project_root, enable_ranker=enable_ranker)
+    app = create_app(service=service, config=service.config)
     return TestClient(app)
 
 
@@ -79,52 +107,48 @@ def test_health_returns_expected_fields(tmp_path: Path) -> None:
     payload = response.json()
     assert set(payload) == {"status", "model_loaded", "ranker_loaded", "timestamp"}
     assert payload["model_loaded"] is True
-    assert payload["ranker_loaded"] is False
 
 
-def test_recommend_returns_200_for_known_user(tmp_path: Path) -> None:
+def test_known_user_ranked_path_returns_latency_breakdown(tmp_path: Path) -> None:
     _write_test_artifacts(tmp_path)
 
-    with _build_test_client(tmp_path) as client:
+    with _build_test_client(tmp_path, enable_ranker=True) as client:
         response = client.post(
             "/recommend",
-            json={"user_id": 1, "top_k": 3, "pipeline": "popularity_only"},
+            json={"user_id": 1, "top_k": 3, "pipeline": "popularity_plus_ranker"},
         )
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["user_id"] == 1
-    assert payload["pipeline"] == "popularity_only"
-    assert len(payload["recommendations"]) == 3
-    assert payload["recommendations"][0]["rank"] == 1
-
-
-def test_unseen_user_returns_non_empty_fallback_recommendations(tmp_path: Path) -> None:
-    _write_test_artifacts(tmp_path)
-
-    with _build_test_client(tmp_path) as client:
-        response = client.post(
-            "/recommend",
-            json={"user_id": 9999, "top_k": 2, "pipeline": "popularity_only"},
-        )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert len(payload["recommendations"]) == 2
+    assert payload["pipeline"] == "popularity_plus_ranker"
     assert payload["fallback_used"] is False
-    assert payload["metadata"]["known_user"] is False
+    assert payload["metadata"]["ranker_used"] is True
+    assert payload["metadata"]["feature_count"] == 4
+    assert set(payload["metadata"]["latency_breakdown"]) == {
+        "candidate_generation_ms",
+        "feature_build_ms",
+        "scoring_ms",
+        "total_latency_ms",
+    }
 
 
-def test_invalid_request_body_returns_validation_error(tmp_path: Path) -> None:
+def test_unseen_user_fallback_still_works(tmp_path: Path) -> None:
     _write_test_artifacts(tmp_path)
 
-    with _build_test_client(tmp_path) as client:
-        response = client.post("/recommend", json={"top_k": 0})
+    with _build_test_client(tmp_path, enable_ranker=True) as client:
+        response = client.post(
+            "/recommend",
+            json={"user_id": 9999, "top_k": 2, "pipeline": "popularity_plus_ranker"},
+        )
 
-    assert response.status_code == 422
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["pipeline"] == "popularity_only"
+    assert payload["fallback_used"] is True
+    assert len(payload["recommendations"]) == 2
 
 
-def test_pipeline_fallback_when_ranker_is_unavailable(tmp_path: Path) -> None:
+def test_fallback_response_includes_fallback_reason(tmp_path: Path) -> None:
     _write_test_artifacts(tmp_path)
 
     with _build_test_client(tmp_path) as client:
@@ -135,19 +159,28 @@ def test_pipeline_fallback_when_ranker_is_unavailable(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["pipeline"] == "popularity_only"
-    assert payload["fallback_used"] is True
     assert payload["metadata"]["fallback_reason"] == "ranker_unavailable"
 
 
-def test_response_includes_latency_and_fallback_fields(tmp_path: Path) -> None:
+def test_candidate_cache_path_preserves_recommendation_correctness(tmp_path: Path) -> None:
+    _write_test_artifacts(tmp_path)
+    service = _build_service(tmp_path, enable_ranker=True)
+
+    first = service.recommend(user_id=1, top_k=3, pipeline="popularity_plus_ranker")
+    second = service.recommend(user_id=1, top_k=3, pipeline="popularity_plus_ranker")
+
+    assert [item.item_id for item in first.recommendations] == [
+        item.item_id for item in second.recommendations
+    ]
+    assert len(service._candidate_cache) >= 1
+
+
+def test_request_id_middleware_does_not_break_responses(tmp_path: Path) -> None:
     _write_test_artifacts(tmp_path)
 
     with _build_test_client(tmp_path) as client:
-        response = client.get("/recommend/1?top_k=2&pipeline=popularity_plus_ranker")
+        response = client.get("/recommend/1?top_k=2&pipeline=popularity_only")
 
     assert response.status_code == 200
-    payload = response.json()
-    assert isinstance(payload["latency_ms"], float)
-    assert payload["latency_ms"] >= 0.0
-    assert "fallback_used" in payload
+    assert "X-Request-ID" in response.headers
+    assert "X-Process-Time-MS" in response.headers

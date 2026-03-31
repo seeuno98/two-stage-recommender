@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install format lint test run-api download-data prepare-data run-popularity run-itemknn run-als run-als-experiments build-ranking-dataset run-ranker run-experiments
+.PHONY: install format lint test run-api smoke-api download-data prepare-data run-popularity run-itemknn run-als run-als-experiments build-ranking-dataset run-ranker run-experiments
 
 install:
 	$(PYTHON) -m pip install --upgrade pip
@@ -17,6 +17,9 @@ test:
 
 run-api:
 	$(PYTHON) -m scripts.run_api
+
+smoke-api:
+	curl -s http://localhost:8000/health | $(PYTHON) -m json.tool
 
 download-data:
 	$(PYTHON) -m scripts.download_data

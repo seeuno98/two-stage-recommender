@@ -301,6 +301,31 @@ make run-api
 
 Current latency logging is intended for local profiling and debugging. Each request emits one structured log line that includes the user, effective pipeline, top-K, latency, fallback usage, and recommendation count.
 
+## Serving Performance and Observability
+
+Stage 3.5 improves the local FastAPI service with startup initialization, in-memory feature lookups, latency breakdown, request middleware, and lightweight candidate caching. The service keeps static artifacts loaded once at startup, uses precomputed user and item feature maps for the reranked path, and adds a small bounded in-memory cache for repeated candidate generation work.
+
+Recommendation responses and logs now track latency across several stages:
+
+- `candidate_generation_ms`
+- `feature_build_ms`
+- `scoring_ms`
+- `total_latency_ms`
+
+Structured request logs also include request ID, endpoint, requested pipeline, effective pipeline, candidate pool size, whether the user was known, whether fallback was used, and whether the ranker actually ran.
+
+Unseen-user fallback remains much faster than reranked inference because it bypasses feature construction and model scoring entirely. The current service is optimized for local development, debugging, and profiling rather than distributed deployment.
+
+Startup loading is implemented with FastAPI lifespan, and per-request request IDs plus timing headers are added with request middleware.
+
+Example request:
+
+```bash
+curl -s -X POST http://localhost:8000/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 123, "top_k": 10, "pipeline": "popularity_plus_ranker"}' | python -m json.tool
+```
+
 Reports are saved under `artifacts/reports/experiments/<experiment_name>/` and include:
 
 - `results.json`

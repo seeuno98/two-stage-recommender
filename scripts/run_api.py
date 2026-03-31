@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import uvicorn
 
 
@@ -10,9 +12,9 @@ def main() -> None:
 
     uvicorn.run(
         "src.serving.app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
+        host=os.getenv("API_HOST", "0.0.0.0"),
+        port=int(os.getenv("API_PORT", "8000")),
+        reload=os.getenv("API_RELOAD", "true").lower() in {"1", "true", "yes", "on"},
     )
 
 

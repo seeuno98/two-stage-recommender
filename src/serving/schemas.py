@@ -55,6 +55,13 @@ class RecommendationResponse(BaseModel):
     )
 
 
+class RequestContext(BaseModel):
+    """Optional request-level metadata used in logs and debugging."""
+
+    request_id: str | None = Field(default=None, description="Per-request identifier.")
+    endpoint: str | None = Field(default=None, description="Requested endpoint path.")
+
+
 class HealthResponse(BaseModel):
     """Health payload for the serving service."""
 
