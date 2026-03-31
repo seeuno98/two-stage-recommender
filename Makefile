@@ -16,7 +16,7 @@ test:
 	$(PYTHON) -m pytest
 
 run-api:
-	$(PYTHON) -m uvicorn src.serving.app:app --reload
+	$(PYTHON) -m scripts.run_api
 
 download-data:
 	$(PYTHON) -m scripts.download_data

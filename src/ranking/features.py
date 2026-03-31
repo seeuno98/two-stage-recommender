@@ -52,19 +52,22 @@ def build_item_feature_table(train_df: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
 
-    event_counts = (
-        train_df.groupby(["item_id", "event_type"])
-        .size()
-        .unstack(fill_value=0)
-        .rename(
-            columns={
-                "view": "item_event_view_count",
-                "addtocart": "item_event_addtocart_count",
-                "transaction": "item_event_transaction_count",
-            }
+    if "event_type" in train_df.columns:
+        event_counts = (
+            train_df.groupby(["item_id", "event_type"])
+            .size()
+            .unstack(fill_value=0)
+            .rename(
+                columns={
+                    "view": "item_event_view_count",
+                    "addtocart": "item_event_addtocart_count",
+                    "transaction": "item_event_transaction_count",
+                }
+            )
+            .reset_index()
         )
-        .reset_index()
-    )
+    else:
+        event_counts = pd.DataFrame({"item_id": item_features["item_id"]})
 
     item_features = item_features.merge(event_counts, on="item_id", how="left")
     for column in [

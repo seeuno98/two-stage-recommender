@@ -260,6 +260,47 @@ or
 make run-experiments
 ```
 
+## FastAPI Recommendation Service
+
+Stage 3 adds a lightweight online inference layer on top of the existing retrieval and ranking artifacts. The service loads local artifacts at startup, serves recommendations through FastAPI, measures per-request latency, emits structured request logs, and gracefully falls back to popularity recommendations when reranking artifacts are unavailable.
+
+The API currently supports two serving pipelines:
+
+- `popularity_only`
+- `popularity_plus_ranker`
+
+The default pipeline is `popularity_plus_ranker`, with automatic fallback to `popularity_only` if the LightGBM ranker or its feature artifacts are missing. Unseen users are also handled gracefully by returning global popularity recommendations instead of failing.
+
+This is a local production-style serving layer for development, profiling, and debugging. It is not a deployment platform and does not yet include authentication, persistence, or distributed infrastructure.
+
+### Health Check
+
+```bash
+curl http://localhost:8000/health
+```
+
+### Recommendation Request
+
+```bash
+curl -X POST http://localhost:8000/recommend \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": 123, "top_k": 10, "pipeline": "popularity_plus_ranker"}'
+```
+
+You can also use the convenience GET endpoint:
+
+```bash
+curl "http://localhost:8000/recommend/123?top_k=10&pipeline=popularity_plus_ranker"
+```
+
+Run the API locally with:
+
+```bash
+make run-api
+```
+
+Current latency logging is intended for local profiling and debugging. Each request emits one structured log line that includes the user, effective pipeline, top-K, latency, fallback usage, and recommendation count.
+
 Reports are saved under `artifacts/reports/experiments/<experiment_name>/` and include:
 
 - `results.json`
