@@ -1,4 +1,4 @@
 candidate_generation:
   model_type: popularity
-  top_k: 100
+  top_k: 150
   min_item_interactions: 1
